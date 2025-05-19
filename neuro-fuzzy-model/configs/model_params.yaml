@@ -1,0 +1,36 @@
+# Model configuration parameters
+
+# Data processing parameters
+data:
+  test_size: 0.2
+  random_state: 42
+  validation_size: 0.1
+
+# Neuro-fuzzy model parameters
+model:
+  # Neural network parameters
+  neural_network:
+    architecture: [64, 32, 16]
+    activation: "relu"
+    dropout_rate: 0.2
+    learning_rate: 0.001
+    batch_size: 64
+    epochs: 100
+    early_stopping_patience: 10
+
+  # Fuzzy system parameters
+  fuzzy_system:
+    membership_functions: 3
+    defuzzification_method: "centroid"
+    inference_method: "mamdani"
+
+# Training parameters
+training:
+  optimizer: "adam"
+  loss: "mean_squared_error"
+  metrics: ["mae", "rmse"]
+
+# Evaluation parameters
+evaluation:
+  metrics: ["precision", "recall", "f1", "ndcg", "map"]
+  k_values: [5, 10, 20]
