@@ -482,31 +482,24 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\El-Hoda\\.nuget\\packages\\": {},
-    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+    "C:\\Users\\daado\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\college\\computer science level 3\\second term\\soft computing\\soft_computing_project\\Movie_recomendation_system\\backend\\backend.csproj",
+      "projectUniqueName": "C:\\Main\\movies recommendation system\\Movie_recomendation_system\\backend\\backend.csproj",
       "projectName": "backend",
-      "projectPath": "D:\\college\\computer science level 3\\second term\\soft computing\\soft_computing_project\\Movie_recomendation_system\\backend\\backend.csproj",
-      "packagesPath": "C:\\Users\\El-Hoda\\.nuget\\packages\\",
-      "outputPath": "D:\\college\\computer science level 3\\second term\\soft computing\\soft_computing_project\\Movie_recomendation_system\\backend\\obj\\",
+      "projectPath": "C:\\Main\\movies recommendation system\\Movie_recomendation_system\\backend\\backend.csproj",
+      "packagesPath": "C:\\Users\\daado\\.nuget\\packages\\",
+      "outputPath": "C:\\Main\\movies recommendation system\\Movie_recomendation_system\\backend\\obj\\",
       "projectStyle": "PackageReference",
-      "fallbackFolders": [
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-      ],
       "configFilePaths": [
-        "C:\\Users\\El-Hoda\\AppData\\Roaming\\NuGet\\NuGet.Config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        "C:\\Users\\daado\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net8.0"
       ],
       "sources": {
-        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -524,7 +517,8 @@
         "enableAudit": "true",
         "auditLevel": "low",
         "auditMode": "direct"
-      }
+      },
+      "SdkAnalysisLevel": "9.0.100"
     },
     "frameworks": {
       "net8.0": {
@@ -550,6 +544,24 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Ref",
+            "version": "[8.0.11, 8.0.11]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Host.win-x64",
+            "version": "[8.0.11, 8.0.11]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Ref",
+            "version": "[8.0.11, 8.0.11]"
+          },
+          {
+            "name": "Microsoft.WindowsDesktop.App.Ref",
+            "version": "[8.0.11, 8.0.11]"
+          }
+        ],
         "frameworkReferences": {
           "Microsoft.AspNetCore.App": {
             "privateAssets": "none"
@@ -558,7 +570,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.312/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.101/PortableRuntimeIdentifierGraph.json"
       }
     }
   }
