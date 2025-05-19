@@ -14,5 +14,7 @@ from .merge_user_rate import (
 )
 
 
-# Add version info
+
+from .prepare_movie_metadata import merge_multiple_datasets
+
 __version__ = '0.1.0'
