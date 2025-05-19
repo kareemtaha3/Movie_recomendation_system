@@ -1,34 +1,46 @@
 # DVC pipeline definition
 stages:
-  prepare_data:
-    cmd: python -m src.movie_recommender.data.prepare_data
+  prepare_movie_metadata:
+    cmd: python -m pipelines.prepare_movie_metadata_pipeline
     deps:
-      - data/raw
-      - src/movie_recommender/data/prepare_data.py
+      - data/raw/row_movie_metadata/credits.csv
+      - data/raw/row_movie_metadata/keywords.csv
+      - data/raw/row_movie_metadata/movies_metadata.csv
+      - pipelines/prepare_movie_metadata_pipeline.py
     outs:
-      - data/processed
+      - data/merged/movies_metadata_merged.csv:
+          cache: true
+          persist: true
 
-  train_model:
-    cmd: python -m src.movie_recommender.models.train_model
-    deps:
-      - data/processed
-      - src/movie_recommender/models/train_model.py
-    params:
-      - configs/model_params.yaml
-    outs:
-      - artifacts/models
-    metrics:
-      - artifacts/metrics/metrics.json: # Model performance metrics
-          cache: false
+  # prepare_data:
+  #   cmd: python -m src.movie_recommender.data.prepare_data
+  #   deps:
+  #     - data/raw
+  #     - src/movie_recommender/data/prepare_data.py
+  #   outs:
+  #     - data/processed
 
-  evaluate_model:
-    cmd: python -m src.movie_recommender.models.evaluate_model
-    deps:
-      - data/processed
-      - artifacts/models
-      - src/movie_recommender/models/evaluate_model.py
-    metrics:
-      - artifacts/metrics/evaluation.json: # Evaluation metrics
-          cache: false
-    plots:
-      - artifacts/figures/performance_plot.png
+  # train_model:
+  #   cmd: python -m src.movie_recommender.models.train_model
+  #   deps:
+  #     - data/processed
+  #     - src/movie_recommender/models/train_model.py
+  #   params:
+  #     - configs/model_params.yaml
+  #   outs:
+  #     - artifacts/models
+  #   metrics:
+  #     - artifacts/metrics/metrics.json: # Model performance metrics
+  #         cache: false
+
+  # evaluate_model:
+  #   cmd: python -m src.movie_recommender.models.evaluate_model
+  #   deps:
+  #     - data/processed
+  #     - artifacts/models
+  #     - src/movie_recommender/models/evaluate_model.py
+  #   metrics:
+  #     - artifacts/metrics/evaluation.json: # Evaluation metrics
+  #         cache: false
+  #   plots:
+  #     - artifacts/figures/performance_plot.png
