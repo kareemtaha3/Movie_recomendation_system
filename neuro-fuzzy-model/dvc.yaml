@@ -1,5 +1,16 @@
 # DVC pipeline definition
 stages:
+  prepare_data_user_rate:
+    cmd: python pipelines/prepare_user_rate_data.py
+    deps:
+      - data/raw/ratings.csv
+      - data/raw/movies.csv
+      - data/raw/links.csv
+      - pipelines/prepare_user_rate_data.py
+      - src/movie_recommender/data/merge_user_rate.py
+    outs:
+      - data/merged/final_user_data.parquet
+      
   prepare_movie_metadata:
     cmd: python -m pipelines.prepare_movie_metadata_pipeline
     deps:
