@@ -1,13 +1,12 @@
 import pandas as pd
 import numpy as np
-import json
 from sklearn.preprocessing import MultiLabelBinarizer
 from typing import Tuple
 
 def engineer_movie_features(
     df: pd.DataFrame,
     top_n_companies: int = 10,
-    top_n_actors: int = 50
+    top_n_actors: int = 5
 ) -> pd.DataFrame:
     """
     Engineer movie/item features for deep learning models.
@@ -56,33 +55,20 @@ def engineer_movie_features(
         index=df.index
     )
 
-    # 8. Production countries multi-hot
-    df['countries_list'] = df['production_countries'].apply(
-        lambda x: [c['iso_3166_1'] for c in json.loads(x)]
-    )
-    mlb_countries = MultiLabelBinarizer()
-    countries_mh = mlb_countries.fit_transform(df['countries_list'])
-    countries_df = pd.DataFrame(
-        countries_mh,
-        columns=[f'country_{c}' for c in mlb_countries.classes_],
-        index=df.index
-    )
-
-    # 9. Production company encoding (top N)
-    df['companies_list'] = df['production_companies'].apply(
-        lambda x: [c['name'] for c in json.loads(x)]
-    )
+    # 8. Production companies encoding (top N)
+    df['companies_list'] = df['production_companies'].str.split('|')
     # Find top N companies
     all_companies = [
-        comp for sub in df['companies_list'] for comp in sub
+        comp for sub in df['companies_list'] if isinstance(sub, list) for comp in sub
     ]
     top_companies = pd.Series(all_companies).value_counts().head(top_n_companies).index
     df['company_code'] = df['companies_list'].apply(
         lambda comps: next((i for i, c in enumerate(top_companies) if c in comps), top_n_companies)
+        if isinstance(comps, list) else top_n_companies
     )
 
-    # 10. Cast list and popularity
-    df['cast_list'] = df['cast'].apply(lambda x: [c['name'] for c in json.loads(x)])
+    # 9. Cast list and popularity
+    df['cast_list'] = df['cast'].str.split('|')
     # Compute actor popularity (mean popularity of movies they appear in)
     actor_pop = (
         df[['cast_list', 'popularity']]
@@ -91,40 +77,19 @@ def engineer_movie_features(
         .mean()
     )
     df['cast_popularity'] = df['cast_list'].apply(
-        lambda lst: np.mean([actor_pop.get(actor, 0) for actor in lst])
+        lambda lst: np.mean([actor_pop.get(actor, 0) for actor in lst]) if isinstance(lst, list) else 0
     )
 
-    # 11. Director extraction & popularity
-    def extract_director(crew_json: str) -> str:
-        for member in json.loads(crew_json):
-            if member.get('job') == 'Director':
-                return member['name']
-        return np.nan
-
-    df['director_name'] = df['crew'].apply(extract_director)
+    # 10. Director features
+    df['director_name'] = df['crew']  # Already processed to just director name
     df['director_code'] = df['director_name'].astype('category').cat.codes
     # Director popularity: total vote_count across their movies
     dir_pop = df.groupby('director_name')['vote_count'].sum()
     df['director_popularity'] = df['director_name'].map(dir_pop)
 
-    # 12. Keywords list
-    df['keywords_list'] = df['keywords'].apply(lambda x: [k['name'] for k in json.loads(x)])
-
-    # 13. Spoken languages multi-hot
-    df['spoken_list'] = df['spoken_languages'].apply(
-        lambda x: [l['iso_639_1'] for l in json.loads(x)]
-    )
-    mlb_speech = MultiLabelBinarizer()
-    speech_mh = mlb_speech.fit_transform(df['spoken_list'])
-    speech_df = pd.DataFrame(
-        speech_mh,
-        columns=[f'spoken_{l}' for l in mlb_speech.classes_],
-        index=df.index
-    )
-
     # Combine all engineered features
     engineered = pd.concat(
-        [df, genres_df, countries_df, speech_df],
+        [df, genres_df],
         axis=1
     )
 

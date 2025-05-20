@@ -4,7 +4,8 @@ from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
 import logging
 
-from movie_recommender.utils.logging import get_logger, log_execution_time
+# Use relative import for logging
+from ..utils.logging import get_logger, log_execution_time
 
 logger = get_logger(__name__)
 

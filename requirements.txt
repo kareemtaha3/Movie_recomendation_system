@@ -1,0 +1,7 @@
+pandas>=1.5.0
+numpy>=1.21.0
+pyarrow>=7.0.0  # For parquet file support
+scikit-learn>=1.0.0
+python-dotenv>=0.19.0
+tqdm>=4.62.0  # For progress bars
+logging>=0.5.1.2 
