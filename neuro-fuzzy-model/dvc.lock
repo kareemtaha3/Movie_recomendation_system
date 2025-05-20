@@ -1,0 +1,55 @@
+schema: '2.0'
+stages:
+  prepare_data_user_rate:
+    cmd: python pipelines/prepare_user_rate_data.py
+    deps:
+    - path: data/raw/links.csv
+      hash: md5
+      md5: c378c945de2d7b1c950a99304a8dd102
+      size: 1925962
+    - path: data/raw/movies.csv
+      hash: md5
+      md5: f2684b9339a553efdfab37231662fa79
+      size: 4192335
+    - path: data/raw/ratings.csv
+      hash: md5
+      md5: 3b1de1d99821e0a35691836bb396059b
+      size: 933898879
+    - path: pipelines/prepare_user_rate_data.py
+      hash: md5
+      md5: b1c716eddd1c82ebee61e4adb989fcc3
+      size: 3445
+    - path: src/movie_recommender/data/merge_user_rate.py
+      hash: md5
+      md5: 373a03727b683587fe39346a72279ebf
+      size: 8071
+    outs:
+    - path: data/merged/final_user_data.parquet
+      hash: md5
+      md5: 6cfa7dd64688e2c0feb40e68a61dd9a6
+      size: 359324810
+    
+  prepare_movie_metadata:
+    cmd: python -m pipelines.prepare_movie_metadata_pipeline
+    deps:
+    - path: data/raw/row_movie_metadata/credits.csv
+      hash: md5
+      md5: d62a1d7d652d324bebee68782f664fc9
+      size: 189917659
+    - path: data/raw/row_movie_metadata/keywords.csv
+      hash: md5
+      md5: 7d0f5123e11917fa1bea011448e5f73d
+      size: 6231943
+    - path: data/raw/row_movie_metadata/movies_metadata.csv
+      hash: md5
+      md5: 42bf3ef8c208a01a4776955875978b1e
+      size: 34445126
+    - path: pipelines/prepare_movie_metadata_pipeline.py
+      hash: md5
+      md5: d1bad7dcbc6f4d04deacaa9bb900dad1
+      size: 1316
+    outs:
+    - path: data/merged/movies_metadata_merged.csv
+      hash: md5
+      md5: f7496793d4b20db86197683b90de1317
+      size: 215312629
