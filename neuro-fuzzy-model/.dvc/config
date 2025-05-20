@@ -3,4 +3,4 @@
 ['remote "gdrive_remote"']
     url = gdrive://16bqe0LfmQoG6-5p9VGJVi0KgWLIap-YZ
     gdrive_use_service_account = true
-    gdrive_service_account_json_file_path = D:\college\computer science level 3\second term\soft computing\dvc.json
+    gdrive_service_account_json_file_path = D:\FCAI\data_science\project\dvc.json

@@ -76,3 +76,50 @@ stages:
       - figures/embedding_evaluation_metrics.png
       - figures/embedding_confusion_matrix.png
       - figures/embedding_roc_curve.png
+      - data/merged/movies_metadata_merged.csv:
+          cache: true
+          persist: true
+    
+  prepare_final_data:
+    cmd: python pipelines/prepare_final_data.py
+    deps:
+      - data/merged/final_user_data.parquet
+      - data/merged/movies_metadata_merged.csv
+      - pipelines/prepare_final_data.py
+    outs:
+      - data/interim/final_merged_data.parquet:
+          cache: true
+          persist: true
+
+  # prepare_data:
+  #   cmd: python -m src.movie_recommender.data.prepare_data
+  #   deps:
+  #     - data/raw
+  #     - src/movie_recommender/data/prepare_data.py
+  #   outs:
+  #     - data/processed
+
+  # train_model:
+  #   cmd: python -m src.movie_recommender.models.train_model
+  #   deps:
+  #     - data/processed
+  #     - src/movie_recommender/models/train_model.py
+  #   params:
+  #     - configs/model_params.yaml
+  #   outs:
+  #     - artifacts/models
+  #   metrics:
+  #     - artifacts/metrics/metrics.json: # Model performance metrics
+  #         cache: false
+
+  # evaluate_model:
+  #   cmd: python -m src.movie_recommender.models.evaluate_model
+  #   deps:
+  #     - data/processed
+  #     - artifacts/models
+  #     - src/movie_recommender/models/evaluate_model.py
+  #   metrics:
+  #     - artifacts/metrics/evaluation.json: # Evaluation metrics
+  #         cache: false
+  #   plots:
+  #     - artifacts/figures/performance_plot.png

@@ -28,7 +28,7 @@ stages:
       hash: md5
       md5: 6cfa7dd64688e2c0feb40e68a61dd9a6
       size: 359324810
-    
+
   prepare_movie_metadata:
     cmd: python -m pipelines.prepare_movie_metadata_pipeline
     deps:
@@ -53,3 +53,23 @@ stages:
       hash: md5
       md5: f7496793d4b20db86197683b90de1317
       size: 215312629
+  prepare_final_data:
+    cmd: python pipelines/prepare_final_data.py
+    deps:
+    - path: data/merged/final_user_data.parquet
+      hash: md5
+      md5: 6cfa7dd64688e2c0feb40e68a61dd9a6
+      size: 359324810
+    - path: data/merged/movies_metadata_merged.csv
+      hash: md5
+      md5: f7496793d4b20db86197683b90de1317
+      size: 215312629
+    - path: pipelines/prepare_final_data.py
+      hash: md5
+      md5: 8371c66295c0a84870ae6508262928c0
+      size: 1874
+    outs:
+    - path: data/interim/final_merged_data.parquet
+      hash: md5
+      md5: c30e10da8647d1da1f2ab4a2fc84d65a
+      size: 673441366

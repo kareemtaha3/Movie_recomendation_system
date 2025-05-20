@@ -17,4 +17,6 @@ from .merge_user_rate import (
 
 from .prepare_movie_metadata import merge_multiple_datasets
 
+from .merge_final_data import merge_final_data
+
 __version__ = '0.1.0'
