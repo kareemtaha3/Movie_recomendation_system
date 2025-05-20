@@ -1,24 +1,81 @@
-# DVC pipeline definition
+# DVC pipeline configuration
+
 stages:
-  prepare_data_user_rate:
+  prepare_movie_metadata:
+    cmd: python pipelines/prepare_movie_metadata_pipeline.py
+    deps:
+      - pipelines/prepare_movie_metadata_pipeline.py
+      - data/raw/row_movie_metadata
+    outs:
+      - data/merged/movies_metadata_merged.csv
+
+  prepare_user_rate_data:
     cmd: python pipelines/prepare_user_rate_data.py
     deps:
-      - data/raw/ratings.csv
-      - data/raw/movies.csv
-      - data/raw/links.csv
       - pipelines/prepare_user_rate_data.py
-      - src/movie_recommender/data/merge_user_rate.py
+      - data/raw/ratings.csv
     outs:
-      - data/merged/final_user_data.parquet
-      
-  prepare_movie_metadata:
-    cmd: python -m pipelines.prepare_movie_metadata_pipeline
+      - data/processed/user_ratings_processed.csv
+
+  train_neuro_fuzzy:
+    cmd: python pipelines/train_pipeline.py --config configs/model_params.yaml
     deps:
-      - data/raw/row_movie_metadata/credits.csv
-      - data/raw/row_movie_metadata/keywords.csv
-      - data/raw/row_movie_metadata/movies_metadata.csv
-      - pipelines/prepare_movie_metadata_pipeline.py
+      - pipelines/train_pipeline.py
+      - configs/model_params.yaml
+      - src/movie_recommender/models/neuro_fuzzy_model.py
+      - data/processed/movies_processed.csv
+      - data/processed/ratings_processed.csv
     outs:
+      - models/neuro_fuzzy_model
+      - metrics/evaluation_metrics.yaml
+    metrics:
+      - metrics/evaluation_metrics.yaml:json
+    plots:
+      - figures/predicted_vs_actual.png
+      - figures/error_distribution.png
+      - figures/recommendation_metrics.png
+      - figures/confusion_matrix.png
+
+  train_embedding_neuro_fuzzy:
+    cmd: python pipelines/train_embedding_neuro_fuzzy_pipeline.py --config configs/embedding_model_params.yaml
+    deps:
+      - pipelines/train_embedding_neuro_fuzzy_pipeline.py
+      - configs/embedding_model_params.yaml
+      - src/movie_recommender/models/embedding_neuro_fuzzy_model.py
+      - src/movie_recommender/models/embedding_model.py
+      - data/processed/movies_processed.csv
+      - data/processed/ratings_processed.csv
+    outs:
+      - models/embedding_neuro_fuzzy_model
+      - metrics/embedding_evaluation_metrics.yaml
+    metrics:
+      - metrics/embedding_evaluation_metrics.yaml:json
+    plots:
+      - figures/embedding_predicted_vs_actual.png
+      - figures/embedding_error_distribution.png
+      - figures/embedding_recommendation_metrics.png
+      - figures/embedding_confusion_matrix.png
+      - figures/training_history.png
+      - figures/fuzzy_membership.png
+
+  evaluate_embedding_model:
+    cmd: python -m movie_recommender.models.evaluate_embedding_model
+    deps:
+      - src/movie_recommender/models/evaluate_embedding_model.py
+      - src/movie_recommender/models/embedding_neuro_fuzzy_model.py
+      - models/embedding_neuro_fuzzy_model
+      - data/processed/movies_processed.csv
+      - data/processed/ratings_processed.csv
+      - data/processed/movie_features.csv
+      - data/processed/user_features.csv
+    metrics:
+      - metrics/embedding_evaluation_metrics.yaml:json
+    plots:
+      - figures/embedding_predicted_vs_actual.png
+      - figures/embedding_error_distribution.png
+      - figures/embedding_evaluation_metrics.png
+      - figures/embedding_confusion_matrix.png
+      - figures/embedding_roc_curve.png
       - data/merged/movies_metadata_merged.csv:
           cache: true
           persist: true

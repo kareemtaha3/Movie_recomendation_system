@@ -1,0 +1,64 @@
+# Configuration for the embedding neuro-fuzzy recommendation model
+
+# Data paths
+data:
+  raw: data/raw
+  processed: data/processed
+  interim: data/interim
+
+# Artifacts paths
+artifacts:
+  models: models
+  metrics: metrics
+  figures: figures
+
+# Feature engineering parameters
+feature_engineering:
+  # Movie features
+  movie:
+    max_genres: 10
+    title_features: 5
+    normalize_year: true
+    include_popularity: true
+
+  # User features
+  user:
+    min_ratings: 5
+    genre_embedding_dim: 8
+    include_demographics: true
+
+# Model parameters
+model:
+  # Embedding model parameters
+  embedding:
+    embedding_dim: 32
+    hidden_layers: [64, 32]
+    dropout_rate: 0.2
+    learning_rate: 0.001
+    activation: "relu"
+    l2_regularization: 0.01
+
+  # Fuzzy system parameters
+  fuzzy:
+    membership_funcs: 3
+    rules: "auto"
+    neural_fuzzy_weight: 0.7 # Weight for neural network predictions (vs fuzzy)
+
+# Training parameters
+training:
+  epochs: 20
+  batch_size: 64
+  validation_split: 0.2
+  early_stopping_patience: 3
+
+# Evaluation parameters
+evaluation:
+  test_size: 0.2
+  random_seed: 42
+  like_threshold: 3.5 # Threshold for binary classification (like/dislike)
+
+# Preprocessing parameters
+preprocessing:
+  min_ratings_per_user: 5
+  min_ratings_per_movie: 3
+  rating_scale: [1, 5]
