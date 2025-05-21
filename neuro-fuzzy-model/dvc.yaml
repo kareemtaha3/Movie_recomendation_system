@@ -35,6 +35,17 @@ stages:
       - figures/error_distribution.png
       - figures/recommendation_metrics.png
       - figures/confusion_matrix.png
+      
+  prepare_final_data:
+    cmd: python pipelines/prepare_final_data.py
+    deps:
+      - data/merged/final_user_data.parquet
+      - data/merged/movies_metadata_merged.csv
+      - pipelines/prepare_final_data.py
+    outs:
+      - data/interim/final_merged_data.parquet:
+          cache: true
+          persist: true
 
   train_embedding_neuro_fuzzy:
     cmd: python pipelines/train_embedding_neuro_fuzzy_pipeline.py --config configs/embedding_model_params.yaml
@@ -80,16 +91,6 @@ stages:
           cache: true
           persist: true
     
-  prepare_final_data:
-    cmd: python pipelines/prepare_final_data.py
-    deps:
-      - data/merged/final_user_data.parquet
-      - data/merged/movies_metadata_merged.csv
-      - pipelines/prepare_final_data.py
-    outs:
-      - data/interim/final_merged_data.parquet:
-          cache: true
-          persist: true
 
   # prepare_data:
   #   cmd: python -m src.movie_recommender.data.prepare_data
