@@ -5,6 +5,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pyarrow as pa
 from tqdm import tqdm
+import ast  # Add this for safely evaluating string literals
 
 # Configure logging
 logging.basicConfig(
@@ -12,6 +13,97 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+def process_cast(cast_str):
+    """
+    Process cast string to extract first 5 cast members' names.
+    
+    Parameters:
+    -----------
+    cast_str : str
+        String representation of cast list
+    
+    Returns:
+    --------
+    str
+        Pipe-separated string of first 5 cast members' names
+    """
+    try:
+        if pd.isna(cast_str):
+            return ""
+        
+        # Convert string representation to actual list
+        cast_list = ast.literal_eval(cast_str)
+        
+        # Extract first 5 cast members' names
+        cast_names = [cast_member['name'] for cast_member in cast_list[:5]]
+        
+        # Join with pipe separator
+        return "|".join(cast_names)
+    except Exception as e:
+        logger.warning(f"Error processing cast data: {e}")
+        return ""
+
+def process_crew(crew_str):
+    """
+    Process crew string to extract director's name.
+    
+    Parameters:
+    -----------
+    crew_str : str
+        String representation of crew list
+    
+    Returns:
+    --------
+    str
+        Director's name or empty string if not found
+    """
+    try:
+        if pd.isna(crew_str):
+            return ""
+        
+        # Convert string representation to actual list
+        crew_list = ast.literal_eval(crew_str)
+        
+        # Find the director
+        for crew_member in crew_list:
+            if crew_member.get('job') == 'Director':
+                return crew_member['name']
+        
+        return ""  # Return empty string if no director found
+    except Exception as e:
+        logger.warning(f"Error processing crew data: {e}")
+        return ""
+
+def process_production_companies(companies_str):
+    """
+    Process production companies string to extract company names.
+    
+    Parameters:
+    -----------
+    companies_str : str
+        String representation of production companies list
+    
+    Returns:
+    --------
+    str
+        Pipe-separated string of company names
+    """
+    try:
+        if pd.isna(companies_str):
+            return ""
+        
+        # Convert string representation to actual list
+        companies_list = ast.literal_eval(companies_str)
+        
+        # Extract company names
+        company_names = [company['name'] for company in companies_list]
+        
+        # Join with pipe separator
+        return "|".join(company_names)
+    except Exception as e:
+        logger.warning(f"Error processing production companies data: {e}")
+        return ""
 
 def merge_final_data(data_dir="data", chunk_size=500_000):
     """
@@ -59,7 +151,10 @@ def merge_final_data(data_dir="data", chunk_size=500_000):
             'revenue',
             'runtime',
             'vote_average',
-            'vote_count'
+            'vote_count',
+            'cast',
+            'crew',
+            'production_companies'  # Add production companies column
         ]
         
         # Verify all required columns exist
@@ -69,6 +164,13 @@ def merge_final_data(data_dir="data", chunk_size=500_000):
         
         # Keep only required columns
         movie_df = movie_df[columns_to_keep]
+        
+        # Process cast, crew, and production companies data
+        logger.info("Processing cast, crew, and production companies data...")
+        movie_df['cast'] = movie_df['cast'].apply(process_cast)
+        movie_df['crew'] = movie_df['crew'].apply(process_crew)
+        movie_df['production_companies'] = movie_df['production_companies'].apply(process_production_companies)
+        logger.info("Data processing completed")
         
         # Clean and prepare movie metadata
         movie_df['imdb_id'] = movie_df['imdb_id'].astype(str).str.replace('.0', '', regex=False)

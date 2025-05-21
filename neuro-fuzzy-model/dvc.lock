@@ -71,5 +71,5 @@ stages:
     outs:
     - path: data/interim/final_merged_data.parquet
       hash: md5
-      md5: c30e10da8647d1da1f2ab4a2fc84d65a
-      size: 673441366
+      md5: 889114af885b07cd801186cfc1ffa5df
+      size: 1205368958

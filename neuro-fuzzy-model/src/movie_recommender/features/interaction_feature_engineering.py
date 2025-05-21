@@ -1,109 +1,168 @@
 import pandas as pd
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
+from tqdm import tqdm
+import logging
+from typing import List, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 def engineer_interaction_features(
     ratings: pd.DataFrame,
     user_profiles: pd.DataFrame,
     movie_features: pd.DataFrame,
-    genre_cols: list,
-    keyword_vec_col: str = 'keywords_vector'
+    genre_cols: List[str] = None
 ) -> pd.DataFrame:
     """
     Compute user-item interaction features for each rating record.
 
     Parameters:
-    - ratings: DataFrame with columns ['userId', 'movieId', ...].
+    - ratings: DataFrame with columns ['userId', 'movieId', 'rating']
     - user_profiles: DataFrame indexed by userId containing:
-        * user_genre_pref_<GENRE> for each genre in genre_cols
-        * user_top_directors: list of director names
-        * user_top_actors: list of actor names
-        * user_pref_languages: list of language codes
-        * user_avg_year: numeric
-        * user_avg_log_budget: numeric
-        * user_avg_log_revenue: numeric
-        * user_keyword_vector: array-like vector of same dim as movie keyword vectors
+        * genre_preferences: pipe-separated string of preferred genres
+        * preferred_directors: list of director names
+        * top_actors: list of actor names
+        * preferred_languages: list of language codes
+        * avg_year: numeric
+        * avg_budget: numeric
+        * avg_revenue: numeric
     - movie_features: DataFrame indexed by movieId containing:
-        * release_year, log_budget, log_revenue, original_language
-        * director_name, cast_list (list of names)
-        * keywords_vector: array-like
-        * genre multi-hot columns matching genre_cols
-    - genre_cols: list of genre column names in movie_features (e.g. ['genre_Action', ...])
-    - keyword_vec_col: column name for movie keyword embedding
+        * genres: pipe-separated string of genres
+        * crew: director name
+        * cast: pipe-separated string of actor names
+        * original_language: language code
+        * release_date: datetime
+        * budget: numeric
+        * revenue: numeric
+    - genre_cols: optional list of genre column names (if using one-hot encoding)
 
     Returns:
-    - DataFrame of same length as ratings with new interaction feature columns.
+    - DataFrame with interaction feature columns
     """
+    logger.info("Starting interaction feature engineering")
     df = ratings.copy()
 
     # Merge in user_profile features
     df = df.join(user_profiles, on='userId', rsuffix='_user')
+    logger.info(f"Merged user profiles for {len(df)} ratings")
 
     # Merge in movie_features
     df = df.join(movie_features, on='movieId', rsuffix='_movie')
+    logger.info(f"Merged movie features for {len(df)} ratings")
 
-    # 1. genre_affinity: dot product user_genre_pref & movie_genres
-    user_genre_cols = [f'user_genre_pref_{g.split("_",1)[1]}' for g in genre_cols]
-    df['genre_affinity'] = df.apply(
-        lambda row: np.dot(row[user_genre_cols].values, row[genre_cols].values),
-        axis=1
-    )
+    # Calculate interaction features
+    features_list = []
+    for idx, row in tqdm(df.iterrows(), total=len(df), desc="Computing interaction features"):
+        try:
+            features = {}
+            
+            # Genre affinity using Jaccard similarity
+            user_genres = set(row.get('genre_preferences', '').split('|'))
+            movie_genres = set(row.get('genres', '').split('|'))
+            intersection = len(user_genres & movie_genres)
+            union = len(user_genres | movie_genres)
+            features['genre_affinity'] = intersection / union if union > 0 else 0.0
 
-    # 2. director_match: 1 if movie director in user's top directors
-    df['director_match'] = df.apply(
-        lambda row: int(row['director_name'] in row['user_top_directors']),
-        axis=1
-    )
+            # Director match
+            movie_director = row.get('crew', '')
+            user_directors = row.get('preferred_directors', [])
+            features['director_match'] = 1 if movie_director in user_directors else 0
 
-    # 3. actor_overlap: fraction of movie's cast in user's top actors
-    def compute_actor_overlap(cast, top_actors):
-        if not cast: return 0.0
-        return len(set(cast) & set(top_actors)) / len(cast)
+            # Actor overlap
+            movie_actors = set(row.get('cast', '').split('|'))
+            user_actors = set(row.get('top_actors', []))
+            if movie_actors:
+                matches = len(movie_actors & user_actors)
+                features['actor_overlap'] = matches / len(movie_actors)
+            else:
+                features['actor_overlap'] = 0.0
 
-    df['actor_overlap'] = df.apply(
-        lambda row: compute_actor_overlap(row['cast_list'], row['user_top_actors']),
-        axis=1
-    )
+            # Language match
+            features['language_match'] = 1 if (
+                row.get('original_language') in row.get('preferred_languages', [])
+            ) else 0
 
-    # 4. language_match: 1 if movie original_language in user's preferred languages
-    df['language_match'] = df.apply(
-        lambda row: int(row['original_language'] in row['user_pref_languages']),
-        axis=1
-    )
+            # Year distance
+            if pd.notna(row.get('release_date')) and pd.notna(row.get('avg_year')):
+                year = pd.to_datetime(row['release_date']).year
+                features['year_distance'] = abs(year - row['avg_year'])
+            else:
+                features['year_distance'] = np.nan
 
-    # 5. release_year_distance
-    df['release_year_distance'] = np.abs(df['release_year'] - df['user_avg_year'])
+            # Budget distance
+            if pd.notna(row.get('budget')) and pd.notna(row.get('avg_budget')):
+                features['budget_distance'] = abs(row['budget'] - row['avg_budget'])
+            else:
+                features['budget_distance'] = np.nan
 
-    # 6. budget_distance
-    df['budget_distance'] = np.abs(df['log_budget'] - df['user_avg_log_budget'])
+            # Revenue distance
+            if pd.notna(row.get('revenue')) and pd.notna(row.get('avg_revenue')):
+                features['revenue_distance'] = abs(row['revenue'] - row['avg_revenue'])
+            else:
+                features['revenue_distance'] = np.nan
 
-    # 7. revenue_distance
-    df['revenue_distance'] = np.abs(df['log_revenue'] - df['user_avg_log_revenue'])
+            # Add user and movie IDs
+            features['user_id'] = row['userId']
+            features['movie_id'] = row['movieId']
+            
+            features_list.append(features)
+            
+        except Exception as e:
+            logger.error(f"Error processing row {idx}: {e}")
+            continue
 
-    # 8. keyword_similarity: cosine similarity of keyword vectors
-    # Ensure vectors are 2D for sklearn
-    def cos_sim(u_vec, m_vec):
-        if u_vec is None or m_vec is None: return 0.0
-        return cosine_similarity([u_vec], [m_vec])[0,0]
+    # Convert to DataFrame
+    interaction_df = pd.DataFrame(features_list)
+    
+    # Create enhanced features
+    interaction_df = create_enhanced_features(interaction_df)
+    
+    logger.info(f"Completed interaction feature engineering with {len(interaction_df)} records")
+    return interaction_df
 
-    df['keyword_similarity'] = df.apply(
-        lambda row: cos_sim(row['user_keyword_vector'], row[keyword_vec_col]),
-        axis=1
-    )
-
-    # Select only interaction feature columns to return
-    interaction_cols = [
-        'genre_affinity', 'director_match', 'actor_overlap',
-        'language_match', 'release_year_distance',
-        'budget_distance', 'revenue_distance', 'keyword_similarity'
-    ]
-    return df[interaction_cols]
+def create_enhanced_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create enhanced interaction features by combining existing ones.
+    
+    Parameters:
+    - df: DataFrame with basic interaction features
+    
+    Returns:
+    - DataFrame with additional enhanced features
+    """
+    df = df.copy()
+    
+    # Content match score (genre and actor based)
+    if all(col in df.columns for col in ['genre_affinity', 'actor_overlap']):
+        df['content_match_score'] = (
+            0.6 * df['genre_affinity'] + 
+            0.4 * df['actor_overlap']
+        )
+    
+    # Metadata match score (director and language based)
+    if all(col in df.columns for col in ['director_match', 'language_match']):
+        df['metadata_match_score'] = (
+            0.7 * df['director_match'] + 
+            0.3 * df['language_match']
+        )
+    
+    # Production value match (budget and revenue based)
+    if all(col in df.columns for col in ['budget_distance', 'revenue_distance']):
+        df['production_value_match'] = (
+            df['budget_distance'] * df['revenue_distance']
+        )**0.5  # Geometric mean
+    
+    # Create interaction terms
+    if all(col in df.columns for col in ['genre_affinity', 'director_match']):
+        df['genre_director_synergy'] = df['genre_affinity'] * df['director_match']
+    
+    if all(col in df.columns for col in ['actor_overlap', 'language_match']):
+        df['actor_language_synergy'] = df['actor_overlap'] * df['language_match']
+    
+    return df
 
 # Example usage:
-# feature_df = engineer_interaction_features(
+# interaction_df = engineer_interaction_features(
 #     ratings_df,
 #     user_profiles_df,
-#     movie_features_df,
-#     genre_cols=[col for col in movie_features_df.columns if col.startswith('genre_')],
-#     keyword_vec_col='keywords_vector'
+#     movie_features_df
 # )
