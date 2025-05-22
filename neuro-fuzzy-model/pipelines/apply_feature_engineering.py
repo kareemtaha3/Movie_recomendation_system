@@ -1,7 +1,7 @@
-"""
-Feature engineering pipeline to process movie, user, and interaction features.
+"""Feature engineering pipeline to process movie, user, and interaction features.
 
 This pipeline loads the merged dataset, applies feature engineering, and saves processed features.
+It uses parallel processing and chunking for efficient handling of large datasets.
 """
 
 import os
@@ -12,23 +12,108 @@ from pathlib import Path
 import argparse
 from typing import List, Dict, Tuple
 import sys
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tqdm import tqdm
 
 # Add project root to path to allow imports
 project_dir = Path(__file__).resolve().parents[1]
 sys.path.append(str(project_dir))
 
 from src.movie_recommender.features.movie_feature_engineering import engineer_movie_features
-from src.movie_recommender.features.interaction_feature_engineering import engineer_interaction_features
+from src.movie_recommender.features.interaction_feature_engineering import engineer_interaction_features, create_enhanced_features
 from src.movie_recommender.utils.logging import setup_logging
+from src.movie_recommender.utils.parallel_processing import parallel_process, chunked_parallel_process, get_optimal_workers
 
 # Setup logging
 logger = logging.getLogger(__name__)
 setup_logging()
 
+def process_user_profile(user_data):
+    """
+    Process a single user's data to create their profile.
+    
+    Parameters:
+    - user_data: Tuple of (user_id, user_ratings, movie_df)
+    
+    Returns:
+    - Dictionary with user profile features or None if error
+    """
+    user_id, user_ratings, movie_df = user_data
+    
+    try:
+        # Consider only movies with ratings >= 3.5 as liked movies
+        liked_movies = user_ratings[user_ratings['rating'] >= 3.5]['movieId'].tolist()
+        
+        if not liked_movies:
+            return None
+            
+        # Get movie data for liked movies
+        liked_movie_data = movie_df[movie_df['movieId'].isin(liked_movies)]
+        
+        if liked_movie_data.empty:
+            return None
+        
+        # Extract genre preferences
+        all_genres = []
+        for genre_list in liked_movie_data['genres'].str.split('|'):
+            if isinstance(genre_list, list):
+                all_genres.extend(genre_list)
+        
+        # Count genre frequencies and select top 5 genres
+        genre_counts = pd.Series(all_genres).value_counts()
+        top_genres = genre_counts.head(5).index.tolist() if not genre_counts.empty else []
+        genre_preferences = '|'.join(top_genres)
+        
+        # Extract preferred directors (top 3)
+        directors = liked_movie_data['crew'].dropna().tolist()
+        dir_counts = pd.Series(directors).value_counts()
+        preferred_directors = dir_counts.head(3).index.tolist() if not dir_counts.empty else []
+        
+        # Extract top actors (top 5)
+        all_actors = []
+        for cast_list in liked_movie_data['cast'].str.split('|'):
+            if isinstance(cast_list, list):
+                all_actors.extend(cast_list[:3])  # Consider only the top 3 actors per movie
+        
+        actor_counts = pd.Series(all_actors).value_counts()
+        top_actors = actor_counts.head(5).index.tolist() if not actor_counts.empty else []
+        
+        # Extract preferred languages
+        languages = liked_movie_data['original_language'].dropna().unique().tolist()
+        
+        # Calculate average year, budget, revenue
+        if 'release_date' in liked_movie_data.columns and not liked_movie_data['release_date'].isna().all():
+            avg_year = pd.to_datetime(liked_movie_data['release_date']).dt.year.mean()
+        else:
+            avg_year = np.nan
+            
+        avg_budget = liked_movie_data['budget'].mean() if 'budget' in liked_movie_data.columns else np.nan
+        avg_revenue = liked_movie_data['revenue'].mean() if 'revenue' in liked_movie_data.columns else np.nan
+        
+        # Create user profile
+        user_profile = {
+            'userId': user_id,
+            'genre_preferences': genre_preferences,
+            'preferred_directors': preferred_directors,
+            'top_actors': top_actors,
+            'preferred_languages': languages,
+            'avg_year': avg_year,
+            'avg_budget': avg_budget,
+            'avg_revenue': avg_revenue
+        }
+        
+        return user_profile
+        
+    except Exception as e:
+        logger.error(f"Error processing user {user_id}: {e}")
+        return None
+
+
 def create_user_profiles(ratings_df: pd.DataFrame, movie_df: pd.DataFrame) -> pd.DataFrame:
     """
     Creates user profiles with preferred genres, directors, actors and other preferences
-    based on their rating history.
+    based on their rating history. Uses parallel processing for efficiency.
     
     Parameters:
     - ratings_df: DataFrame with ['userId', 'movieId', 'rating']
@@ -38,86 +123,63 @@ def create_user_profiles(ratings_df: pd.DataFrame, movie_df: pd.DataFrame) -> pd
     - DataFrame indexed by userId with user profile features
     """
     logger.info("Creating user profiles...")
+    start_time = time.time()
     
-    # Group by userId and calculate stats for each user
-    user_stats = []
-    
-    # Process each user
+    # Prepare data for parallel processing
+    user_data = []
     for user_id, user_ratings in ratings_df.groupby('userId'):
-        try:
-            # Consider only movies with ratings >= 3.5 as liked movies
-            liked_movies = user_ratings[user_ratings['rating'] >= 3.5]['movieId'].tolist()
-            
-            if not liked_movies:
-                continue
-                
-            # Get movie data for liked movies
-            liked_movie_data = movie_df[movie_df['movieId'].isin(liked_movies)]
-            
-            # Extract genre preferences
-            all_genres = []
-            for genre_list in liked_movie_data['genres'].str.split('|'):
-                if isinstance(genre_list, list):
-                    all_genres.extend(genre_list)
-            
-            # Count genre frequencies and select top 5 genres
-            genre_counts = pd.Series(all_genres).value_counts()
-            top_genres = genre_counts.head(5).index.tolist()
-            genre_preferences = '|'.join(top_genres)
-            
-            # Extract preferred directors (top 3)
-            directors = liked_movie_data['crew'].dropna().tolist()
-            dir_counts = pd.Series(directors).value_counts()
-            preferred_directors = dir_counts.head(3).index.tolist()
-            
-            # Extract top actors (top 5)
-            all_actors = []
-            for cast_list in liked_movie_data['cast'].str.split('|'):
-                if isinstance(cast_list, list):
-                    all_actors.extend(cast_list[:3])  # Consider only the top 3 actors per movie
-            
-            actor_counts = pd.Series(all_actors).value_counts()
-            top_actors = actor_counts.head(5).index.tolist()
-            
-            # Extract preferred languages
-            languages = liked_movie_data['original_language'].dropna().unique().tolist()
-            
-            # Calculate average year, budget, revenue
-            if 'release_date' in liked_movie_data.columns and not liked_movie_data['release_date'].isna().all():
-                avg_year = pd.to_datetime(liked_movie_data['release_date']).dt.year.mean()
-            else:
-                avg_year = np.nan
-                
-            avg_budget = liked_movie_data['budget'].mean() if 'budget' in liked_movie_data.columns else np.nan
-            avg_revenue = liked_movie_data['revenue'].mean() if 'revenue' in liked_movie_data.columns else np.nan
-            
-            # Create user profile
-            user_profile = {
-                'userId': user_id,
-                'genre_preferences': genre_preferences,
-                'preferred_directors': preferred_directors,
-                'top_actors': top_actors,
-                'preferred_languages': languages,
-                'avg_year': avg_year,
-                'avg_budget': avg_budget,
-                'avg_revenue': avg_revenue
-            }
-            
-            user_stats.append(user_profile)
-            
-        except Exception as e:
-            logger.error(f"Error processing user {user_id}: {e}")
-            continue
+        user_data.append((user_id, user_ratings, movie_df))
+    
+    # Process users in parallel
+    n_workers = get_optimal_workers()
+    logger.info(f"Processing {len(user_data)} users with {n_workers} workers")
+    
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        # Submit all tasks
+        future_to_user = {executor.submit(process_user_profile, data): data[0] for data in user_data}
+        
+        # Collect results as they complete
+        user_stats = []
+        for future in tqdm(as_completed(future_to_user), total=len(user_data), desc="Processing users"):
+            result = future.result()
+            if result is not None:
+                user_stats.append(result)
     
     # Create DataFrame from user profiles
     user_profiles_df = pd.DataFrame(user_stats)
     if not user_profiles_df.empty:
         user_profiles_df.set_index('userId', inplace=True)
-        
-    logger.info(f"Created {len(user_profiles_df)} user profiles")
+    
+    elapsed_time = time.time() - start_time
+    logger.info(f"Created {len(user_profiles_df)} user profiles in {elapsed_time:.2f} seconds")
     return user_profiles_df
 
-def main(input_filepath: str, output_dir: str, chunk_size: int = 50000):
+def process_interaction_batch(batch_data):
+    """
+    Process a batch of interactions to create interaction features.
+    
+    Parameters:
+    - batch_data: Tuple of (batch_df, user_profiles, movie_features)
+    
+    Returns:
+    - DataFrame with interaction features
+    """
+    batch_df, user_profiles, movie_features = batch_data
+    
+    try:
+        # Create interaction features for this batch
+        batch_features = engineer_interaction_features(
+            batch_df,
+            user_profiles,
+            movie_features
+        )
+        return batch_features
+    except Exception as e:
+        logger.error(f"Error processing interaction batch: {e}")
+        return pd.DataFrame()
+
+
+def main(input_filepath: str, output_dir: str, chunk_size: int = 50000, n_workers: int = None):
     """
     Main function to run the feature engineering pipeline.
     
@@ -127,6 +189,12 @@ def main(input_filepath: str, output_dir: str, chunk_size: int = 50000):
         chunk_size: Size of chunks to use when processing large files
     """
     logger.info(f"Starting feature engineering pipeline with input file: {input_filepath}")
+    start_time = time.time()
+    
+    # Set number of workers for parallel processing
+    if n_workers is None:
+        n_workers = get_optimal_workers()
+    logger.info(f"Using {n_workers} workers for parallel processing")
     
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -140,10 +208,10 @@ def main(input_filepath: str, output_dir: str, chunk_size: int = 50000):
             logger.info(f"Parquet file contains {num_rows} rows")
             
             # Read only the first chunk to get schema and check required columns
-            data_sample = next(pd.read_parquet(input_filepath, chunksize=1000))
+            data_sample = parquet_file.read_row_group(0).to_pandas()
             
-            # Process in chunks if file is large (more than 1 million rows)
-            use_chunks = num_rows > 1000000
+            # Process in chunks if file is large (more than 500,000 rows)
+            use_chunks = num_rows > 500000
             
             if use_chunks:
                 logger.info(f"File is large ({num_rows} rows). Will process in chunks.")
@@ -158,8 +226,8 @@ def main(input_filepath: str, output_dir: str, chunk_size: int = 50000):
             file_size = os.path.getsize(input_filepath) / (1024 * 1024)  # size in MB
             logger.info(f"CSV file size: {file_size:.2f} MB")
             
-            # Process in chunks if file is large (more than 500 MB)
-            use_chunks = file_size > 500
+            # Process in chunks if file is large (more than 250 MB)
+            use_chunks = file_size > 250
             
             if use_chunks:
                 logger.info(f"File is large ({file_size:.2f} MB). Will process in chunks.")
@@ -190,41 +258,32 @@ def main(input_filepath: str, output_dir: str, chunk_size: int = 50000):
     logger.info("Engineering movie features...")
     try:
         # Get unique movies
-        if 'use_chunks' in locals() and use_chunks:
-            # For large files, process movies in chunks
+        if 'use_chunks' in locals() and use_chunks and input_filepath.endswith('.parquet'):
             unique_movie_ids = set()
             movie_chunks = []
+            parquet_file = pq.ParquetFile(input_filepath)
             
-            # Function to process each chunk
-            def process_movie_chunk(chunk):
-                # Filter to movies we haven't seen yet
+            for i in range(parquet_file.num_row_groups):
+                chunk = parquet_file.read_row_group(i).to_pandas()
+                # Process chunk
                 chunk_unique = chunk.drop_duplicates('movieId')
                 new_movies = chunk_unique[~chunk_unique['movieId'].isin(unique_movie_ids)]
-                
-                # Update our set of seen movie IDs
                 unique_movie_ids.update(new_movies['movieId'].tolist())
-                
-                return new_movies
-              # Process in chunks
-            if input_filepath.endswith('.parquet'):
-                for chunk in pd.read_parquet(input_filepath, chunksize=chunk_size):
-                    movie_chunks.append(process_movie_chunk(chunk))
-            else:  # CSV
-                for chunk in pd.read_csv(input_filepath, chunksize=chunk_size):
-                    movie_chunks.append(process_movie_chunk(chunk))
+                movie_chunks.append(new_movies)
             
-            # Combine all unique movies
             movies_df = pd.concat(movie_chunks, ignore_index=True)
-            logger.info(f"Processed {len(movies_df)} unique movies from chunks")
+            logger.info(f"Processed {len(movies_df)} unique movies from row groups")
         else:
             # For smaller files, we already have all data in memory
             movies_df = data.drop_duplicates('movieId')
         
         # Engineer movie features
+        logger.info(f"Engineering features for {len(movies_df)} unique movies")
         movie_features = engineer_movie_features(movies_df)
         
         # Set index for faster joins later
-        movie_features.set_index('movieId', inplace=True)
+        if 'movieId' in movie_features.columns:
+            movie_features.set_index('movieId', inplace=True)
         
         # Save movie features
         movie_features_path = os.path.join(output_dir, 'movie_features.parquet')
@@ -236,54 +295,58 @@ def main(input_filepath: str, output_dir: str, chunk_size: int = 50000):
       # Create user profiles
     try:
         if 'use_chunks' in locals() and use_chunks:
-            # For large files, process ratings in chunks
-            logger.info("Processing large ratings file in chunks for user profiles")
-              # First, extract all unique user IDs
-            unique_user_ids = set()
+            # Get unique users from Parquet
             if input_filepath.endswith('.parquet'):
-                for chunk in pd.read_parquet(input_filepath, chunksize=chunk_size, columns=['userId']):
-                    unique_user_ids.update(chunk['userId'].unique())
-            else:  # CSV
-                for chunk in pd.read_csv(input_filepath, chunksize=chunk_size, usecols=['userId']):
+                parquet_file = pq.ParquetFile(input_filepath)
+                unique_user_ids = set()
+                for i in range(parquet_file.num_row_groups):
+                    chunk = parquet_file.read_row_group(i).to_pandas()
                     unique_user_ids.update(chunk['userId'].unique())
             
             logger.info(f"Found {len(unique_user_ids)} unique users")
             
-            # Process users in batches
-            batch_size = 1000
+            # Process users in parallel batches
+            batch_size = 2000
             user_batches = [list(unique_user_ids)[i:i+batch_size] for i in range(0, len(unique_user_ids), batch_size)]
             
             user_profiles_list = []
             
-            for batch_idx, user_batch in enumerate(user_batches):
-                logger.info(f"Processing user batch {batch_idx+1}/{len(user_batches)}")
-                
-                # Get all ratings for users in this batch
-                batch_ratings = []
-                batch_movie_data = []
-                if input_filepath.endswith('.parquet'):
-                    for chunk in pd.read_parquet(input_filepath, chunksize=chunk_size):
-                        # Filter for users in current batch
-                        batch_chunk = chunk[chunk['userId'].isin(user_batch)]
-                        if not batch_chunk.empty:
-                            batch_ratings.append(batch_chunk[['userId', 'movieId', 'rating']])
-                            batch_movie_data.append(batch_chunk)
-                else:  # CSV
-                    for chunk in pd.read_csv(input_filepath, chunksize=chunk_size):
-                        # Filter for users in current batch
-                        batch_chunk = chunk[chunk['userId'].isin(user_batch)]
-                        if not batch_chunk.empty:
-                            batch_ratings.append(batch_chunk[['userId', 'movieId', 'rating']])
-                            batch_movie_data.append(batch_chunk)
-                
-                if batch_ratings:
-                    batch_ratings_df = pd.concat(batch_ratings)
-                    batch_movie_df = pd.concat(batch_movie_data)
+            with tqdm(total=len(user_batches), desc="Processing user batches") as pbar:
+                for batch_idx, user_batch in enumerate(user_batches):
+                    logger.info(f"Processing user batch {batch_idx+1}/{len(user_batches)}")
                     
-                    # Create profiles for this batch
-                    batch_profiles = create_user_profiles(batch_ratings_df, batch_movie_df)
-                    user_profiles_list.append(batch_profiles)
+                    # Get all ratings for users in this batch
+                    batch_ratings = []
+                    batch_movie_data = []
+                    if input_filepath.endswith('.parquet'):
+                        # Read using row groups
+                        parquet_file = pq.ParquetFile(input_filepath)
+                        for i in range(parquet_file.num_row_groups):
+                            # Read entire row group
+                            chunk = parquet_file.read_row_group(i).to_pandas()
+                            # Filter for users in current batch
+                            batch_chunk = chunk[chunk['userId'].isin(user_batch)]
+                            if not batch_chunk.empty:
+                                batch_ratings.append(batch_chunk[['userId', 'movieId', 'rating']])
+                                batch_movie_data.append(batch_chunk)
+                    else:  # CSV
+                        # CSV can still use chunksize
+                        for chunk in pd.read_csv(input_filepath, chunksize=chunk_size):
+                            batch_chunk = chunk[chunk['userId'].isin(user_batch)]
+                            if not batch_chunk.empty:
+                                batch_ratings.append(batch_chunk[['userId', 'movieId', 'rating']])
+                                batch_movie_data.append(batch_chunk)
             
+                    if batch_ratings:
+                        batch_ratings_df = pd.concat(batch_ratings)
+                        batch_movie_df = pd.concat(batch_movie_data)
+                        
+                        # Create profiles for this batch
+                        batch_profiles = create_user_profiles(batch_ratings_df, batch_movie_df)
+                        user_profiles_list.append(batch_profiles)
+                    
+                    pbar.update(1)
+                    
             # Combine all user profiles
             user_profiles = pd.concat(user_profiles_list) if user_profiles_list else pd.DataFrame()
         else:
@@ -301,17 +364,14 @@ def main(input_filepath: str, output_dir: str, chunk_size: int = 50000):
       # Create interaction features
     try:
         # If we're processing chunks, we need to load all ratings
-        if 'use_chunks' in locals() and use_chunks:
-            # Load all ratings data
+        if 'use_chunks' in locals() and use_chunks and input_filepath.endswith('.parquet'):
             ratings_chunks = []
-            if input_filepath.endswith('.parquet'):
-                for chunk in pd.read_parquet(input_filepath, chunksize=50000, columns=['userId', 'movieId', 'rating']):
-                    ratings_chunks.append(chunk)
-            else:  # CSV
-                for chunk in pd.read_csv(input_filepath, chunksize=50000, usecols=['userId', 'movieId', 'rating']):
-                    ratings_chunks.append(chunk)
-                    
+            parquet_file = pq.ParquetFile(input_filepath)
+            for i in range(parquet_file.num_row_groups):
+                chunk = parquet_file.read_row_group(i).to_pandas()[['userId', 'movieId', 'rating']]
+                ratings_chunks.append(chunk)
             ratings_df = pd.concat(ratings_chunks)
+                    
             logger.info(f"Loaded {len(ratings_df)} ratings for interaction features")
         else:
             # For smaller files, we already have data in memory
@@ -321,26 +381,36 @@ def main(input_filepath: str, output_dir: str, chunk_size: int = 50000):
         if len(ratings_df) > 1000000:
             logger.info("Processing interaction features in batches")
             
-            # Split ratings into batches
-            batch_size = 100000
+            # Split ratings into batches for parallel processing
+            batch_size = 50000
             ratings_batches = [ratings_df.iloc[i:i+batch_size] for i in range(0, len(ratings_df), batch_size)]
             
-            interaction_features_list = []
+            # Prepare batch data for parallel processing
+            batch_data = [(batch_df, user_profiles, movie_features) for batch_df in ratings_batches]
             
-            for batch_idx, batch_df in enumerate(ratings_batches):
-                logger.info(f"Processing interaction batch {batch_idx+1}/{len(ratings_batches)}")
+            logger.info(f"Processing {len(batch_data)} interaction batches in parallel")
+            
+            # Process batches in parallel
+            with ProcessPoolExecutor(max_workers=n_workers) as executor:
+                # Submit all tasks
+                future_to_batch = {executor.submit(process_interaction_batch, data): i 
+                                  for i, data in enumerate(batch_data)}
                 
-                # Create interaction features for this batch
-                batch_features = engineer_interaction_features(
-                    batch_df,
-                    user_profiles,
-                    movie_features
-                )
-                
-                interaction_features_list.append(batch_features)
+                # Collect results as they complete
+                interaction_features_list = []
+                for future in tqdm(as_completed(future_to_batch), total=len(batch_data), 
+                                  desc="Processing interaction batches"):
+                    batch_idx = future_to_batch[future]
+                    try:
+                        result = future.result()
+                        if not result.empty:
+                            interaction_features_list.append(result)
+                        logger.info(f"Completed interaction batch {batch_idx+1}/{len(batch_data)}")
+                    except Exception as e:
+                        logger.error(f"Error in batch {batch_idx}: {e}")
             
             # Combine all interaction features
-            interaction_features = pd.concat(interaction_features_list)
+            interaction_features = pd.concat(interaction_features_list) if interaction_features_list else pd.DataFrame()
         else:
             # For smaller datasets, process all at once
             interaction_features = engineer_interaction_features(
@@ -474,7 +544,19 @@ if __name__ == "__main__":
     parser.add_argument('--output_dir', type=str, 
                      default='data/processed',
                      help='Directory to save processed features')
+    parser.add_argument('--chunk_size', type=int, 
+                     default=50000,
+                     help='Size of chunks to use when processing large files')
+    parser.add_argument('--workers', type=int, 
+                     default=None,
+                     help='Number of worker processes for parallel processing')
     
     args = parser.parse_args()
     
-    main(args.input_filepath, args.output_dir)
+    # Print execution summary at the end
+    start_time = time.time()
+    main(args.input_filepath, args.output_dir, args.chunk_size, args.workers)
+    elapsed_time = time.time() - start_time
+    logger.info(f"Total execution time: {elapsed_time:.2f} seconds")
+    print(f"\nFeature engineering completed in {elapsed_time:.2f} seconds")
+    print(f"Processed features saved to: {args.output_dir}")

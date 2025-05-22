@@ -1,0 +1,46 @@
+2025-05-22 21:25:38 - movie_recommender - INFO - Starting training pipeline
+2025-05-22 21:25:38 - movie_recommender - INFO - Configuration: {'data': {'test_size': 0.2, 'random_state': 42, 'validation_size': 0.1}, 'model': {'neural_network': {'architecture': [64, 32, 16], 'activation': 'relu', 'dropout_rate': 0.2, 'learning_rate': 0.001, 'batch_size': 64, 'epochs': 100, 'early_stopping_patience': 10}, 'fuzzy_system': {'membership_functions': 3, 'defuzzification_method': 'centroid', 'inference_method': 'mamdani'}}, 'training': {'optimizer': 'adam', 'loss': 'mean_squared_error', 'metrics': ['mae', 'rmse']}, 'evaluation': {'metrics': ['precision', 'recall', 'f1', 'ndcg', 'map'], 'k_values': [5, 10, 20]}}
+2025-05-22 21:25:38 - movie_recommender - INFO - Attempting to load merged data...
+2025-05-22 21:25:38 - movie_recommender.pipelines.train_pipeline_fixed - INFO - Starting load_merged_data
+2025-05-22 21:25:38 - movie_recommender.pipeline - INFO - Loading merged data from D:\college\computer science level 3\second term\soft computing\soft_computing_project\Movie_recomendation_system\neuro-fuzzy-model\data\processed
+2025-05-22 21:25:38 - movie_recommender.pipeline - INFO - Reading only necessary columns: ['vote_count', 'rating', 'imdbId', 'cast', 'budget', 'original_language', 'revenue', 'popularity', 'vote_average', 'crew', 'userId', 'runtime', 'title', 'release_date', 'production_companies', 'genres', 'tmdbId', 'movieId']
+2025-05-22 21:25:38 - movie_recommender.pipeline - INFO - Processing 32 row groups
+2025-05-22 21:25:38 - movie_recommender.pipeline - INFO - Processing row group 1/32
+2025-05-22 21:25:41 - movie_recommender.pipeline - INFO - Processing row group 2/32
+2025-05-22 21:25:44 - movie_recommender.pipeline - INFO - Processing row group 3/32
+2025-05-22 21:25:48 - movie_recommender.pipeline - INFO - Processing row group 4/32
+2025-05-22 21:25:51 - movie_recommender.pipeline - INFO - Processing row group 5/32
+2025-05-22 21:25:56 - movie_recommender.pipeline - INFO - Processing row group 6/32
+2025-05-22 21:25:59 - movie_recommender.pipeline - INFO - Processing row group 7/32
+2025-05-22 21:26:03 - movie_recommender.pipeline - INFO - Processing row group 8/32
+2025-05-22 21:26:07 - movie_recommender.pipeline - INFO - Processing row group 9/32
+2025-05-22 21:26:10 - movie_recommender.pipeline - INFO - Processing row group 10/32
+2025-05-22 21:26:12 - movie_recommender.pipeline - INFO - Processing row group 11/32
+2025-05-22 21:26:14 - movie_recommender.pipeline - INFO - Processing row group 12/32
+2025-05-22 21:26:16 - movie_recommender.pipeline - INFO - Processing row group 13/32
+2025-05-22 21:26:18 - movie_recommender.pipeline - INFO - Processing row group 14/32
+2025-05-22 21:26:20 - movie_recommender.pipeline - INFO - Processing row group 15/32
+2025-05-22 21:26:22 - movie_recommender.pipeline - INFO - Processing row group 16/32
+2025-05-22 21:26:24 - movie_recommender.pipeline - INFO - Processing row group 17/32
+2025-05-22 21:26:26 - movie_recommender.pipeline - INFO - Processing row group 18/32
+2025-05-22 21:26:30 - movie_recommender.pipeline - INFO - Processing row group 19/32
+2025-05-22 21:26:34 - movie_recommender.pipeline - INFO - Processing row group 20/32
+2025-05-22 21:26:37 - movie_recommender.pipeline - INFO - Processing row group 21/32
+2025-05-22 21:26:41 - movie_recommender.pipeline - INFO - Processing row group 22/32
+2025-05-22 21:26:44 - movie_recommender.pipeline - INFO - Processing row group 23/32
+2025-05-22 21:26:48 - movie_recommender.pipeline - INFO - Processing row group 24/32
+2025-05-22 21:26:52 - movie_recommender.pipeline - INFO - Processing row group 25/32
+2025-05-22 21:26:55 - movie_recommender.pipeline - INFO - Processing row group 26/32
+2025-05-22 21:26:58 - movie_recommender.pipeline - INFO - Processing row group 27/32
+2025-05-22 21:27:00 - movie_recommender.pipeline - INFO - Processing row group 28/32
+2025-05-22 21:27:02 - movie_recommender.pipeline - INFO - Processing row group 29/32
+2025-05-22 21:27:04 - movie_recommender.pipeline - INFO - Processing row group 30/32
+2025-05-22 21:27:06 - movie_recommender.pipeline - INFO - Processing row group 31/32
+2025-05-22 21:27:08 - movie_recommender.pipeline - INFO - Processing row group 32/32
+2025-05-22 21:27:11 - movie_recommender.pipeline - INFO - Extracted 21265 movie features, 329946 user features, and 32733706 ratings
+2025-05-22 21:27:12 - movie_recommender.pipelines.train_pipeline_fixed - INFO - Finished load_merged_data in 93.78 seconds
+2025-05-22 21:27:12 - movie_recommender.pipelines.train_pipeline_fixed - INFO - Starting train_model
+2025-05-22 21:27:12 - movie_recommender.pipeline - INFO - Training model
+2025-05-22 21:27:12 - movie_recommender.movie_recommender.models.neuro_fuzzy_model_fixed - INFO - Initialized NeuroFuzzyRecommender with config: {'neural_network': {'architecture': [64, 32, 16], 'activation': 'relu', 'dropout_rate': 0.2, 'learning_rate': 0.001, 'batch_size': 64, 'epochs': 100, 'early_stopping_patience': 10}, 'fuzzy_system': {'membership_functions': 3, 'defuzzification_method': 'centroid', 'inference_method': 'mamdani'}, 'neural_layers': [64, 32, 16], 'dropout_rate': 0.2, 'learning_rate': 0.001, 'activation': 'relu', 'fuzzy_membership_funcs': 3, 'fuzzy_rules': 'auto', 'embedding_dim': 32, 'neural_fuzzy_weight': 0.7}
+2025-05-22 21:27:12 - movie_recommender.movie_recommender.models.neuro_fuzzy_model_fixed - INFO - Starting fit
+2025-05-22 21:27:12 - movie_recommender.movie_recommender.models.neuro_fuzzy_model_fixed - INFO - Training neuro-fuzzy recommendation model

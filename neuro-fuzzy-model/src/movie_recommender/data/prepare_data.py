@@ -26,18 +26,41 @@ def load_raw_data():
     """Load raw data from the raw data directory."""
     logger.info(f"Loading raw data from {RAW_DATA_DIR}")
     
-    # Example: Load movie and rating data
-    # Adjust file paths and loading logic based on your actual data files
     try:
+        # Load all required data files
         movies_path = RAW_DATA_DIR / 'movies.csv'
         ratings_path = RAW_DATA_DIR / 'ratings.csv'
+        links_path = RAW_DATA_DIR / 'links.csv'
+        tags_path = RAW_DATA_DIR / 'tags.csv'
         
-        if not movies_path.exists() or not ratings_path.exists():
-            logger.warning("Raw data files not found. Please ensure data is available.")
+        # Check if all required files exist
+        required_files = [movies_path, ratings_path]
+        missing_files = [f for f in required_files if not f.exists()]
+        
+        if missing_files:
+            logger.warning(f"Missing required data files: {missing_files}")
             return None, None
             
+        # Load required datasets
         movies_df = pd.read_csv(movies_path)
         ratings_df = pd.read_csv(ratings_path)
+        
+        # Load optional datasets if available
+        try:
+            if links_path.exists():
+                links_df = pd.read_csv(links_path)
+                movies_df = pd.merge(movies_df, links_df, on='movieId', how='left')
+        except Exception as e:
+            logger.warning(f"Error loading links data: {e}")
+        
+        try:
+            if tags_path.exists():
+                tags_df = pd.read_csv(tags_path)
+                # Aggregate tags for each movie
+                movie_tags = tags_df.groupby('movieId')['tag'].apply(list).reset_index()
+                movies_df = pd.merge(movies_df, movie_tags, on='movieId', how='left')
+        except Exception as e:
+            logger.warning(f"Error loading tags data: {e}")
         
         logger.info(f"Loaded {len(movies_df)} movies and {len(ratings_df)} ratings")
         return movies_df, ratings_df

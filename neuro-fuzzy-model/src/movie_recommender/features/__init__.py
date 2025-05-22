@@ -16,7 +16,7 @@ Example:
     >>> features = fe.prepare_features_for_model(movies_df, ratings_df)
 """
 
-from .feature_engineering import FeatureEngineering
+
 
 from .movie_feature_engineering import (
     engineer_movie_features,

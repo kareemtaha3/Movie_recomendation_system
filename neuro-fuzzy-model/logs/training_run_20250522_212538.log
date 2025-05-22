@@ -1,0 +1,2 @@
+2025-05-22 21:25:38 - movie_recommender - INFO - Starting neuro-fuzzy recommendation model training
+2025-05-22 21:25:38 - movie_recommender - INFO - Arguments: Namespace(config='configs/model_params.yaml', log_level='INFO', features_dir=None, output_dir=None, no_eval=False, no_plots=False)

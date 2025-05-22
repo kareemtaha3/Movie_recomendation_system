@@ -14,12 +14,16 @@ def load_config(config_name='model_params.yaml'):
     """Load configuration from YAML file.
     
     Args:
-        config_name (str): Name of the configuration file in the configs directory.
+        config_name (str): Path to the configuration file. Can be absolute or relative to the configs directory.
         
     Returns:
         dict: Configuration parameters.
     """
-    config_path = CONFIG_DIR / config_name
+    # Try the path as given first
+    config_path = Path(config_name)
+    if not config_path.is_absolute():
+        # If not absolute and doesn't exist, try in the configs directory
+        config_path = CONFIG_DIR / config_path.name
     
     if not config_path.exists():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
@@ -29,10 +33,11 @@ def load_config(config_name='model_params.yaml'):
     
     return config
 
-def get_data_path(data_type='processed'):
+def get_data_path(config=None, data_type='processed'):
     """Get the path to a data directory.
     
     Args:
+        config (dict, optional): Configuration parameters. If provided, will check for custom data paths.
         data_type (str): Type of data directory ('raw', 'processed', 'interim', 'external').
         
     Returns:
@@ -43,17 +48,22 @@ def get_data_path(data_type='processed'):
     if data_type not in valid_types:
         raise ValueError(f"Invalid data type: {data_type}. Must be one of {valid_types}")
     
-    data_path = DATA_DIR / data_type
+    # Check if custom data path is specified in config
+    if config and 'data_dir' in config:
+        data_path = Path(config['data_dir']) / data_type
+    else:
+        data_path = DATA_DIR / data_type
     
     if not data_path.exists():
         os.makedirs(data_path, exist_ok=True)
     
     return data_path
 
-def get_artifact_path(artifact_type='models'):
+def get_artifact_path(config=None, artifact_type='models'):
     """Get the path to an artifacts directory.
     
     Args:
+        config (dict, optional): Configuration parameters. If provided, will check for custom artifact paths.
         artifact_type (str): Type of artifact directory ('models', 'figures', 'metrics').
         
     Returns:
@@ -64,7 +74,11 @@ def get_artifact_path(artifact_type='models'):
     if artifact_type not in valid_types:
         raise ValueError(f"Invalid artifact type: {artifact_type}. Must be one of {valid_types}")
     
-    artifact_path = ARTIFACTS_DIR / artifact_type
+    # Check if custom artifact path is specified in config
+    if config and 'output_dir' in config:
+        artifact_path = Path(config['output_dir']) / artifact_type
+    else:
+        artifact_path = ARTIFACTS_DIR / artifact_type
     
     if not artifact_path.exists():
         os.makedirs(artifact_path, exist_ok=True)
@@ -95,83 +109,17 @@ def save_processed_data(df, output_path):
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
-                # Create all parent directories if they don't exist
                 os.makedirs(output_dir, exist_ok=True)
-                
-                # Verify directory was created successfully
-                if os.path.exists(output_dir) and os.path.isdir(output_dir):
-                    print(f"Directory created/verified: {output_dir} (exists: True)")
-                    # Check if directory is writable
-                    if os.access(output_dir, os.W_OK):
-                        print(f"Directory is writable: {output_dir}")
-                    else:
-                        print(f"WARNING: Directory is not writable: {output_dir}")
-                    break
-                else:
-                    raise FileNotFoundError(f"Failed to create directory: {output_dir}")
-            except Exception as dir_err:
-                if attempt < max_attempts - 1:
-                    print(f"Attempt {attempt+1}/{max_attempts} to create directory failed: {str(dir_err)}")
-                    import time
-                    time.sleep(1)  # Wait before retrying
-                else:
+                break
+            except Exception as e:
+                if attempt == max_attempts - 1:
                     raise
+                print(f"Attempt {attempt+1} failed: {e}. Retrying...")
         
-        # Save data with retry mechanism
-        print(f"DataFrame shape before saving: {df.shape}")
-        max_save_attempts = 3
-        for save_attempt in range(max_save_attempts):
-            try:
-                # Flush any pending file operations before saving
-                import gc
-                gc.collect()
-                
-                # Create a temporary filename in the same directory
-                temp_path = f"{output_path}.temp"
-                
-                # Save to temporary file first
-                print(f"Saving to temporary file: {temp_path}")
-                df.to_csv(temp_path, index=False)
-                
-                # Force sync to disk
-                import gc
-                gc.collect()
-                
-                # Verify temp file was created
-                if os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
-                    # Rename temp file to final filename (atomic operation on most file systems)
-                    print(f"Renaming {temp_path} to {output_path}")
-                    if os.path.exists(output_path):
-                        os.remove(output_path)  # Remove existing file if it exists
-                    os.rename(temp_path, output_path)
-                else:
-                    raise FileNotFoundError(f"Temporary file was not created or is empty: {temp_path}")
-                
-                # Wait a moment to ensure file is fully written
-                import time
-                time.sleep(0.5)
-                
-                # Verify final file was created
-                file_exists = os.path.exists(output_path)
-                file_size = os.path.getsize(output_path) if file_exists else 0
-                print(f"Processed data saved to: {output_path} (exists: {file_exists}, size: {file_size} bytes)")
-                
-                if not file_exists or file_size == 0:
-                    raise FileNotFoundError(f"File was not created or is empty: {output_path}")
-                
-                # Ensure file is properly closed and synced to disk
-                gc.collect()
-                
-                return True
-            except Exception as save_err:
-                if save_attempt < max_save_attempts - 1:
-                    print(f"Attempt {save_attempt+1}/{max_save_attempts} to save file failed: {str(save_err)}")
-                    import time
-                    time.sleep(1)  # Wait before retrying
-                else:
-                    raise
+        # Save the data
+        df.to_csv(output_path, index=False)
+        print(f"Successfully saved data to {output_path}")
+        return True
     except Exception as e:
-        print(f"Error details: {type(e).__name__}: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
-        raise Exception(f"Error saving processed data: {e}")
+        print(f"Error saving data: {e}")
+        raise
