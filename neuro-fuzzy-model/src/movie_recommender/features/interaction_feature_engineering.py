@@ -3,8 +3,20 @@ import numpy as np
 from tqdm import tqdm
 import logging
 from typing import List, Dict, Any
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
+import os
 
 logger = logging.getLogger(__name__)
+
+# Set multiprocessing start method to 'spawn' for Windows at module level
+if os.name == 'nt' and not multiprocessing.get_start_method(allow_none=True):
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError:
+        # If already set, ignore the error
+        pass
 
 def process_interaction_row(row):
     """
@@ -35,7 +47,10 @@ def process_interaction_row(row):
         user_directors = row.get('preferred_directors', [])
         # Convert to list if it's a string
         if isinstance(user_directors, str):
-            user_directors = eval(user_directors)
+            try:
+                user_directors = eval(user_directors)
+            except (SyntaxError, NameError):
+                user_directors = []
         features['director_match'] = 1 if movie_director in user_directors else 0
 
         # Actor overlap
@@ -43,7 +58,10 @@ def process_interaction_row(row):
         user_actors = set(row.get('top_actors', []))
         # Convert to list if it's a string
         if isinstance(user_actors, str):
-            user_actors = eval(user_actors)
+            try:
+                user_actors = eval(user_actors)
+            except (SyntaxError, NameError):
+                user_actors = set()
         # Remove empty strings
         movie_actors.discard('')
         
@@ -57,7 +75,10 @@ def process_interaction_row(row):
         user_languages = row.get('preferred_languages', [])
         # Convert to list if it's a string
         if isinstance(user_languages, str):
-            user_languages = eval(user_languages)
+            try:
+                user_languages = eval(user_languages)
+            except (SyntaxError, NameError):
+                user_languages = []
             
         features['language_match'] = 1 if (
             row.get('original_language') in user_languages
@@ -96,6 +117,24 @@ def process_interaction_row(row):
         return None
 
 
+def process_batch(batch_data):
+    """
+    Process a batch of rows to avoid memory issues with large datasets.
+    
+    Parameters:
+    - batch_data: List of row dictionaries to process
+    
+    Returns:
+    - List of processed feature dictionaries
+    """
+    results = []
+    for row in batch_data:
+        result = process_interaction_row(row)
+        if result is not None:
+            results.append(result)
+    return results
+
+
 def engineer_interaction_features(
     ratings: pd.DataFrame,
     user_profiles: pd.DataFrame,
@@ -132,16 +171,15 @@ def engineer_interaction_features(
     Returns:
     - DataFrame with interaction feature columns
     """
-    import time
-    from concurrent.futures import ProcessPoolExecutor, as_completed
-    
     start_time = time.time()
     logger.info("Starting interaction feature engineering")
     
     # Determine optimal number of workers if not specified
     if n_workers is None:
-        import multiprocessing
         n_workers = max(1, multiprocessing.cpu_count() - 1)
+    
+    # Limit workers to avoid excessive resource usage
+    n_workers = min(n_workers, 8)  # Cap at 8 workers to prevent system overload
     
     # Make a copy to avoid modifying the original
     df = ratings.copy()
@@ -174,25 +212,35 @@ def engineer_interaction_features(
         
         logger.info(f"Processing batch {batch_idx+1}/{total_batches} with {len(batch_df)} rows")
         
-        # Process rows in parallel
-        batch_features = []
-        with ProcessPoolExecutor(max_workers=n_workers) as executor:
-            # Convert DataFrame rows to dictionaries for easier processing
-            row_dicts = batch_df.to_dict('records')
-            
-            # Submit all tasks
-            future_to_row = {executor.submit(process_interaction_row, row): i 
-                            for i, row in enumerate(row_dicts)}
-            
-            # Collect results as they complete
-            for future in tqdm(as_completed(future_to_row), total=len(row_dicts), 
-                              desc=f"Batch {batch_idx+1}/{total_batches}"):
-                result = future.result()
-                if result is not None:
-                    batch_features.append(result)
+        # Convert DataFrame rows to dictionaries for easier processing
+        row_dicts = batch_df.to_dict('records')
         
-        features_list.extend(batch_features)
-        logger.info(f"Completed batch {batch_idx+1}/{total_batches} with {len(batch_features)} valid features")
+        # Split the batch into smaller sub-batches for better memory management
+        sub_batch_size = min(500, len(row_dicts))  # Reduced sub-batch size for better memory management
+        sub_batches = [row_dicts[i:i+sub_batch_size] for i in range(0, len(row_dicts), sub_batch_size)]
+        
+        # Process each sub-batch with a fresh executor to avoid handle closed errors
+        for sub_batch_idx, sub_batch in enumerate(sub_batches):
+            try:
+                # Use a fresh executor for each sub-batch to avoid handle closed errors
+                with ProcessPoolExecutor(max_workers=n_workers) as executor:
+                    future = executor.submit(process_batch, sub_batch)
+                    try:
+                        result = future.result(timeout=300)  # Add timeout to prevent hanging
+                        if result:
+                            features_list.extend(result)
+                    except Exception as e:
+                        logger.error(f"Error processing sub-batch {sub_batch_idx}: {e}")
+            except Exception as e:
+                logger.error(f"Error in sub-batch processing: {e}")
+                # Continue with the next sub-batch instead of failing completely
+                continue
+            
+            # Log progress periodically
+            if (sub_batch_idx + 1) % 10 == 0 or sub_batch_idx == len(sub_batches) - 1:
+                logger.info(f"Completed {sub_batch_idx+1}/{len(sub_batches)} sub-batches in batch {batch_idx+1}")
+        
+        logger.info(f"Completed batch {batch_idx+1}/{total_batches}")
     
     # Convert to DataFrame
     if not features_list:
@@ -223,29 +271,32 @@ def create_enhanced_features(df: pd.DataFrame) -> pd.DataFrame:
     # Content match score (genre and actor based)
     if all(col in df.columns for col in ['genre_affinity', 'actor_overlap']):
         df['content_match_score'] = (
-            0.6 * df['genre_affinity'] + 
-            0.4 * df['actor_overlap']
+            0.6 * df['genre_affinity'].fillna(0) + 
+            0.4 * df['actor_overlap'].fillna(0)
         )
     
     # Metadata match score (director and language based)
     if all(col in df.columns for col in ['director_match', 'language_match']):
         df['metadata_match_score'] = (
-            0.7 * df['director_match'] + 
-            0.3 * df['language_match']
+            0.7 * df['director_match'].fillna(0) + 
+            0.3 * df['language_match'].fillna(0)
         )
     
     # Production value match (budget and revenue based)
     if all(col in df.columns for col in ['budget_distance', 'revenue_distance']):
+        # Handle NaN values
+        budget_dist = df['budget_distance'].fillna(0)
+        revenue_dist = df['revenue_distance'].fillna(0)
         df['production_value_match'] = (
-            df['budget_distance'] * df['revenue_distance']
+            budget_dist * revenue_dist
         )**0.5  # Geometric mean
     
     # Create interaction terms
     if all(col in df.columns for col in ['genre_affinity', 'director_match']):
-        df['genre_director_synergy'] = df['genre_affinity'] * df['director_match']
+        df['genre_director_synergy'] = df['genre_affinity'].fillna(0) * df['director_match'].fillna(0)
     
     if all(col in df.columns for col in ['actor_overlap', 'language_match']):
-        df['actor_language_synergy'] = df['actor_overlap'] * df['language_match']
+        df['actor_language_synergy'] = df['actor_overlap'].fillna(0) * df['language_match'].fillna(0)
     
     return df
 
